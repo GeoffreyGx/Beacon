@@ -71,5 +71,23 @@ export function useRoomEvents(token: string, codes: string[], onUnauthorized: ()
     reload();
   }, []);
 
-  return { get, version, refresh };
+  /** Re-downloads every room, keeping the current data on screen (and on failure). For pull to refresh. */
+  const revalidate = useCallback(async () => {
+    const queue = key.split('\n').filter(Boolean);
+    let next = 0;
+    const worker = async () => {
+      while (next < queue.length) {
+        const code = queue[next++];
+        try {
+          cache.current.set(code, await edt.getRoomEvents(token, code));
+          bump();
+        } catch {
+          // Keep what we had; the normal loading path handles expired sessions.
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  }, [token, key]);
+
+  return { get, version, refresh, revalidate };
 }

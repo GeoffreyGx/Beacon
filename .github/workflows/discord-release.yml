@@ -1,0 +1,77 @@
+# Posts a message to Discord when a GitHub release is published.
+#
+# Webhook URL: repo secret DISCORD_WEBHOOK_URL (Settings → Secrets and variables → Actions). It is a
+# credential (anyone with it can post to the channel): never write it in this file. Without the secret
+# the job is skipped with a warning.
+#
+# Two triggers, because releases created by android-release.yml use GITHUB_TOKEN, and events made with
+# GITHUB_TOKEN don't start other workflows:
+# - workflow_run: the "Android release" workflow finished successfully → announce the release it created
+#   (found by its target commit, which that workflow sets with `gh release create --target <sha>`).
+# - release: a release published by hand (web UI / personal token).
+# workflow_run only fires for workflows on the default branch, so this takes effect once merged into main.
+name: Discord release notification
+
+on:
+  workflow_run:
+    workflows: [Android release]
+    types: [completed]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: github.event_name == 'release' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Find the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          if [ "$EVENT" = release ]; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > release.json
+          else
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=20" \
+              --jq "[.[] | select(.target_commitish == \"$HEAD_SHA\" and .draft == false)][0] // empty" > release.json
+          fi
+          if [ ! -s release.json ]; then
+            echo "::warning::No published release found for this run."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            jq -r '"Found \(.tag_name): \(.html_url)"' release.json
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post to Discord
+        if: steps.release.outputs.found == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL secret is not set: no notification sent."
+            exit 0
+          fi
+          # Embed: title links to the release, notes (Discord limit: 4096 chars), APK download link.
+          jq '{
+            username: "Beacon",
+            embeds: [{
+              title: ("Beacon \(.tag_name)" + (if .prerelease then " (pré-version)" else "" end)),
+              url: .html_url,
+              color: 2450411,
+              description: ((.body // "") | if length > 3800 then .[0:3800] + "\n…" else . end),
+              fields: [ .assets[] | select(.name | endswith(".apk"))
+                        | { name: "APK Android", value: "[\(.name)](\(.browser_download_url))" } ],
+              timestamp: .published_at
+            }]
+          }' release.json > payload.json
+          curl --fail-with-body -sS -H "Content-Type: application/json" \
+            --data @payload.json "$DISCORD_WEBHOOK_URL?wait=true" > /dev/null
+          echo "Notification sent."

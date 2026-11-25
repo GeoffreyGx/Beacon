@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { loadTimetable, type Timetable } from './bus';
 import { fetchRealtime, type RealtimeFeed } from './gtfsRt';
+import { useOnRefresh } from './refresh';
 import { useNow } from './useLive';
 
 const RT_REFRESH_MS = 30_000;
@@ -20,6 +21,14 @@ export function useTimetable(active: boolean) {
       cancelled = true;
     };
   }, [active]);
+  // Pull to refresh: only retry when it failed (the timetable is cached and changes every few days).
+  useOnRefresh(() => {
+    if (!active || !error) return;
+    return loadTimetable().then((tt) => {
+      setTimetable(tt);
+      setError(null);
+    }, () => {});
+  });
   return { timetable, error };
 }
 
@@ -42,5 +51,15 @@ export function useRealtime(active: boolean): RealtimeFeed | null {
       cancelled = true;
     };
   }, [active, tick]);
+  useOnRefresh(() => {
+    if (!active) return;
+    return fetchRealtime().then(
+      (feed) => {
+        setRt(feed);
+        setFailed(false);
+      },
+      () => setFailed(true),
+    );
+  });
   return failed ? null : rt;
 }

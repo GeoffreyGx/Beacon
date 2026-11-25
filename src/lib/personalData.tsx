@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { edt, UnauthorizedError, type Favori, type RoomEvent } from './edt';
 import { isHoliday, isTravelTime } from './events';
 import { getPref, setPref } from './prefs';
+import { useOnRefresh } from './refresh';
 import { useSession } from './sessionContext';
 import { t } from './i18n';
 
@@ -94,6 +95,22 @@ export function PersonalDataProvider({ children }: { children: ReactNode }) {
     setError(null);
     setPref(PREF_KEY, String(id));
   }, []);
+
+  // Pull to refresh (home): replaces the data once it has arrived; other favoris are fetched again when picked.
+  useOnRefresh(async () => {
+    if (!token || key === null) return;
+    try {
+      const [f, ev] = await Promise.all([
+        edt.getFavoris(token),
+        key === NO_FAVORI ? edt.getPersonalEvents(token) : edt.getFavoriEvents(token, key),
+      ]);
+      setFavoris(f);
+      setCache({ [key]: ev });
+      setError(null);
+    } catch (e) {
+      await fail(e);
+    }
+  });
 
   const reload = useCallback(() => {
     setFavoris(null);

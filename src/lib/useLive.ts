@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { fetchAttendance } from './crous';
 import { fetchLibrary } from './libraries';
+import { useOnRefresh } from './refresh';
 
 const CROUS_REFRESH_MS = 5_000;
 const LIBRARY_REFRESH_MS = 5_000;
@@ -51,6 +52,16 @@ function usePolled<T>(key: string | null, fetcher: (key: string) => Promise<T>, 
       cancelled = true;
     };
   }, [key, fetcher, active, tick]);
+  useOnRefresh(() => {
+    if (!active || !key) return;
+    return fetcher(key).then(
+      (value) => {
+        setData({ key, value });
+        setError(null);
+      },
+      (e) => setError(String(e instanceof Error ? e.message : e)),
+    );
+  });
   return { value: data?.key === key ? data.value : null, error };
 }
 

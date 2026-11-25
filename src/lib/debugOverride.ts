@@ -16,14 +16,18 @@ export type NowOverride = {
   label: string;
 };
 
-/** `limitedBuses`: mark every other departure as a limited-stop ("DIRECT") trip, to test its label. */
-type DebugState = { panel: boolean; override: NowOverride | null; limitedBuses: boolean };
+/**
+ * `limitedBuses`: mark every other departure as a limited-stop ("DIRECT") trip, to test its label.
+ * `testAlerts`: show the server alerts whose style is "test" (`alerts.ts`), hidden otherwise.
+ */
+type DebugState = { panel: boolean; override: NowOverride | null; limitedBuses: boolean; testAlerts: boolean };
 
-const store = createStore<DebugState>({ panel: false, override: null, limitedBuses: false });
+const store = createStore<DebugState>({ panel: false, override: null, limitedBuses: false, testAlerts: false });
 const set = store.set;
 
 export const setDebugPanel = (panel: boolean) => set({ panel, ...(panel ? {} : { override: null, limitedBuses: false }) });
 export const setLimitedBuses = (limitedBuses: boolean) => set({ limitedBuses });
+export const setTestAlerts = (testAlerts: boolean) => set({ testAlerts });
 
 /** Departures as shown: with the debug switch on, the 1st, 3rd… are marked limited. */
 export const withDebugLimited = (deps: Departure[], on: boolean): Departure[] =>

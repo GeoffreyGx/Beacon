@@ -1,6 +1,5 @@
 // Static content from the Beacon server (`beaconApi.ts`): files the maintainer edits in the server's
-// dashboard (news, announcements, config…), listed in a manifest. Foundation only: nothing calls
-// `syncContent()` yet.
+// dashboard (news, announcements, config…), listed in a manifest. Synced by `alerts.ts` (home alerts).
 //
 //   GET /v1/content/manifest.json → { schema, revision, generatedAt, meta, files: { name: { url, sha256, size, contentType, updatedAt } } }
 //   GET <file.url>                → the file (`?v=<sha256>`, cacheable forever)
@@ -12,8 +11,8 @@
 // answering garbage: the sync gives up and the previous files and manifest stay in use. `meta` is free-form JSON (min app version,
 // announcement, feature flags…): read it with `useContentMeta()`.
 //
-// Before wiring this up, make sure the onboarding text still says the truth (it currently says
-// Beacon only sends statistics, or has no server at all).
+// The onboarding text says Beacon downloads announcements without sending anything about the user:
+// keep it true.
 import { useEffect } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import { beaconApiAvailable, beaconRequest } from './beaconApi';

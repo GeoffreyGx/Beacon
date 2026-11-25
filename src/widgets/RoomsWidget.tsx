@@ -12,6 +12,7 @@ import { useSession } from '../lib/sessionContext';
 import { makeStyles, useAppTheme } from '../lib/theme';
 import { formatMinutes, parisParts } from '../lib/time';
 import { useNow } from '../lib/useLive';
+import { useOnRefresh } from '../lib/refresh';
 import { useRoomEvents, type RoomEventsState } from '../lib/useRoomEvents';
 
 /** How far ahead the second column looks. */
@@ -62,7 +63,8 @@ function PinnedRooms({ token, rooms, onUnauthorized }: { token: string; rooms: P
   const focused = useIsFocused();
   const now = useNow(30_000, focused);
   const codes = useMemo(() => rooms.map((r) => r.code), [rooms]);
-  const { get } = useRoomEvents(token, codes, onUnauthorized);
+  const { get, revalidate } = useRoomEvents(token, codes, onUnauthorized);
+  useOnRefresh(revalidate);
   const later = now + LATER_MS;
 
   return (

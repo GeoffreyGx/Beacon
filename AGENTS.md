@@ -83,12 +83,17 @@ the release keystore from repo secrets → GitHub release with `Beacon-<tag>.apk
 - Beacon server URL: repo variable `BEACON_API_URL` → `EXPO_PUBLIC_BEACON_API_URL` at bundle time
   (unset → no statistics, and the onboarding says Beacon has no server).
 - Pushes to `dev` don't build anything.
+- **Android auto-update** (`src/lib/appUpdate.ts`): once a day the app reads GitHub's latest release
+  (`api.github.com/repos/GeoffreyGx/Beacon/releases/latest`), compares the `versionCode N` in the notes
+  with its own, downloads the `.apk` asset, checks GitHub's SHA-256 digest and opens the Android installer
+  (`REQUEST_INSTALL_PACKAGES` in `app.json`). Keep that notes line and the APK asset; don't mark
+  releases as prerelease. Off in dev builds; switch + manual check in Réglages → Mises à jour.
 
 ## Features
 
 | Tab / screen | Route | |
 |---|---|---|
-| Accueil | `src/app/(tabs)/index.tsx` | Contextual "now bar" header (class in progress, next class, lunch, bus home…), student card button, editable widgets (Aujourd'hui, Resto U, Bus, Salles favorites). |
+| Accueil | `src/app/(tabs)/index.tsx` | Contextual "now bar" header (class in progress, next class, lunch, bus home…), alerts (server alerts + app update), student card button, editable widgets (Aujourd'hui, Resto U, Bus, Salles favorites). |
 | Mon EDT | `(tabs)/perso.tsx` | Timetable of the selected favourite: one day with swipe on phones, week grid on wide screens. |
 | Salles | `(tabs)/salles.tsx` | Room availability grid (rooms × 30-min slots) with a draggable time cursor, search, campus filter, pinned rooms. |
 | Payer | `(tabs)/pay.tsx` | Izly balance, QR payment, history. Tab hidden unless an Izly account is linked. |
@@ -110,7 +115,7 @@ src/widgets/             home widgets + registry.ts
 src/debug/DebugPanel.tsx dev-only now-bar scenarios (fake clock / events)
 src/lib/                 logic: storage (keychain), store (createStore), prefs, session, edt*, events, time,
                          theme, i18n/, izly/, bus + gtfsRt (buses), crous, studentCard, code128, webview, http,
-                         beaconApi + analytics + content (Beacon server, see below)
+                         beaconApi + analytics + content (Beacon server, see below), appUpdate (Android)
 scripts/gen-icons.py     regenerates src/components/Icon.tsx
 assets/icon-src/         app icon generator (Pillow)
 app.json / app.config.ts config; BEACON_PERSONAL_BUILD=1 → iOS bundle id with `.dev` suffix
@@ -126,8 +131,13 @@ anonymous statistics and static content. The app finds it through `EXPO_PUBLIC_B
   version/build, platform, OS version); opt-out in Réglages → Confidentialité calls
   `DELETE /v1/analytics/installs/:id`. Changing the payload means changing `onboarding.privacyAnalytics`
   and `settings.analyticsHint` in every language.
-- `src/lib/content.ts`: manifest + file cache (`/v1/content/manifest.json`), **not used yet**: before
-  calling `syncContent()`, update the onboarding privacy text.
+- `src/lib/content.ts`: manifest + file cache (`/v1/content/manifest.json`), synced by `alerts.ts`.
+  The onboarding privacy text says Beacon downloads announcements and sends nothing about the user:
+  keep it true if content ever sends more than the request itself.
+- `src/lib/alerts.ts`: every manifest file named `alert-*.json` is a home-screen alert
+  (`style`: major / blockade / maintenance / normal / test, localized `title` / `content`, optional
+  `startsAt` / `endsAt` / `dismissible` / `unverified` (grey "not from the university" note)), shown by `src/components/AlertStack.tsx` with the Android
+  update banner. `test` alerts only show in dev builds (Réglages → Développement switch).
 - The server's `/v1` API is a contract with released apps: changes there must stay backward compatible.
 
 ## Conventions

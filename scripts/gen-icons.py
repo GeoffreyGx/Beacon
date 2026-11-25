@@ -13,7 +13,7 @@ NAMES = [
     "building-2-line", "calendar-2-line", "time-line", "user-line", "group-line", "book-open-line",
     "home-5-line", "pencil-line", "add-line", "arrow-up-s-line", "close-line", "logout-box-line", "id-card-line", "barcode-line", "restaurant-line", "bus-line", "settings-3-line", "bug-line", "rss-line", "wallet-3-line", "qr-code-line", "add-circle-line", "shopping-bag-3-line", "bank-line",
     "global-line", "focus-3-line", "star-fill", "star-line", "lock-line", "graduation-cap-line", "flashlight-fill",
-    "delete-bin-line",
+    "delete-bin-line", "alert-line", "hammer-line", "barricade-line", "flask-line", "information-line",
 ]
 
 root = pathlib.Path(sys.argv[1]) / "icons"

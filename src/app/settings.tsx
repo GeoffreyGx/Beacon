@@ -1,5 +1,5 @@
 // "Réglages": theme and language, bus stops, Izly account, anonymous statistics (only in builds with a
-// Beacon server), university account. The "Développement" section only
+// Beacon server), updates (Android), university account. The "Développement" section only
 // exists in development builds (`__DEV__` is false and dropped in release).
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -11,7 +11,8 @@ import { BusSettings } from '../components/BusSettings';
 import { Icon } from '../components/Icon';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { OptionSheet } from '../components/OptionSheet';
-import { setDebugPanel, useDebug } from '../lib/debugOverride';
+import { UpdateSettings } from '../components/UpdateSettings';
+import { setDebugPanel, setTestAlerts, useDebug } from '../lib/debugOverride';
 import { wipeAllData } from '../debug/wipe';
 import { useSession } from '../lib/sessionContext';
 import { BRAND, makeStyles, useAppTheme } from '../lib/theme';
@@ -19,13 +20,14 @@ import { LANGUAGE_NAMES, setForcedLang, t, useForcedLang, type Lang } from '../l
 import { clearIzly, useIzlyLinked } from '../lib/izly';
 import { setPayLockEnabled, usePayLockEnabled } from '../lib/payLock';
 import { analyticsAvailable, setAnalyticsEnabled, useAnalyticsEnabled } from '../lib/analytics';
+import { debugShowUpdatePrompt, updatesSupported } from '../lib/appUpdate';
 
 export default function SettingsScreen() {
   const styles = useStyles();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { signOut } = useSession();
-  const { panel } = useDebug();
+  const { panel, testAlerts } = useDebug();
   const forcedLang = useForcedLang();
   const izlyLinked = useIzlyLinked();
   const payLock = usePayLockEnabled();
@@ -100,6 +102,12 @@ export default function SettingsScreen() {
         </Section>
       )}
 
+      {updatesSupported && (
+        <Section title={t('settings.updates')}>
+          <UpdateSettings />
+        </Section>
+      )}
+
       <Section title={t('settings.account')}>
         <OutlineButton
           icon="logout-box-r-line"
@@ -121,6 +129,15 @@ export default function SettingsScreen() {
               <Text style={styles.hint}>{t('settings.debugHint')}</Text>
             </View>
             <Switch value={panel} onValueChange={setDebugPanel} />
+          </View>
+          <View style={styles.row}>
+            <Icon name="flask-line" size={18} color={colors.primary} />
+            {/* Debug-only labels, not translated. */}
+            <View style={styles.flex1}>
+              <Text style={styles.label}>Afficher les alertes de test</Text>
+              <Text style={styles.hint}>Alertes du serveur avec le style « test », masquées sinon.</Text>
+            </View>
+            <Switch value={testAlerts} onValueChange={setTestAlerts} />
           </View>
           <Pressable
             onPress={() => setDebugLangOpen(true)}
@@ -151,6 +168,10 @@ export default function SettingsScreen() {
             }}
             onClose={() => setDebugLangOpen(false)}
           />
+          {updatesSupported && (
+            // Debug-only label, not translated.
+            <OutlineButton icon="refresh-line" label="Afficher la popup de mise à jour" onPress={debugShowUpdatePrompt} />
+          )}
           <Text style={styles.hint}>{t('settings.wipeHint')}</Text>
           {wiping ? (
             <ActivityIndicator color={colors.primary} />

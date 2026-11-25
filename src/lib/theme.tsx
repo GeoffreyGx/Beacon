@@ -42,6 +42,20 @@ const light = {
   /** Home "now bar" background, and text on it. */
   accent: '#2563eb',
   onAccent: '#ffffff',
+  /** Informational banner (app update): tinted surface, its text, and its main button. */
+  infoBg: '#eff6ff',
+  infoBorder: '#bfdbfe',
+  infoText: '#1e3a8a',
+  infoButton: '#2563eb',
+  onInfoButton: '#ffffff',
+  /** Server alerts on the home screen (`src/lib/alerts.ts`), one tint per style. */
+  alerts: {
+    major: { bg: '#fef2f2', border: '#fecaca', text: '#991b1b' },
+    blockade: { bg: '#fff7ed', border: '#fed7aa', text: '#9a3412' },
+    maintenance: { bg: '#fefce8', border: '#fde68a', text: '#854d0e' },
+    normal: { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534' },
+    test: { bg: '#f3f4f6', border: '#d1d5db', text: '#374151' },
+  } satisfies Record<string, EventColors>,
   events: {
     CM: { bg: '#dbeafe', border: '#3b82f6', text: '#1e3a8a' },
     TD: { bg: '#dcfce7', border: '#22c55e', text: '#14532d' },
@@ -82,6 +96,18 @@ const dark: Palette = {
   backdrop: 'rgba(0, 0, 0, 0.7)',
   accent: '#1d4ed8',
   onAccent: '#ffffff',
+  infoBg: '#0b1626',
+  infoBorder: '#1e3a5f',
+  infoText: '#cfe1f7',
+  infoButton: '#93c5fd',
+  onInfoButton: '#0b1626',
+  alerts: {
+    major: { bg: '#1f0a0a', border: '#5f1e1e', text: '#fecaca' },
+    blockade: { bg: '#1f1007', border: '#6b3410', text: '#fed7aa' },
+    maintenance: { bg: '#1c1605', border: '#5c4710', text: '#fde68a' },
+    normal: { bg: '#07170d', border: '#14532d', text: '#bbf7d0' },
+    test: { bg: '#111111', border: '#333333', text: '#d4d4d4' },
+  },
   events: {
     CM: { bg: '#1e3a8a', border: '#60a5fa', text: '#dbeafe' },
     TD: { bg: '#14532d', border: '#4ade80', text: '#dcfce7' },
