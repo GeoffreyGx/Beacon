@@ -117,20 +117,22 @@ export function ThemePicker() {
   );
 }
 
-/** Segmented single choice (radio group). */
+/** Segmented single choice (radio group); `label` names the group for screen readers. */
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  label,
 }: {
   options: { value: T; label: string; icon?: IconName }[];
   value: T;
   onChange: (value: T) => void;
+  label?: string;
 }) {
   const { colors } = useAppTheme();
   const styles = useStyles();
   return (
-    <View style={styles.segmented} accessibilityRole="radiogroup">
+    <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={label}>
       {options.map((o) => {
         const selected = o.value === value;
         return (

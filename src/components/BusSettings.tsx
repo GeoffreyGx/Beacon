@@ -1,9 +1,10 @@
 // Settings: home bus stop (any stop of the kept lines), Centre-ville stop (St Lazare / Université)
 // and Agroparc stop (Grand Avignon / Montaigne / Agrosciences).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { CAMPUS_STOPS, CENTRE_STOPS } from '../lib/bus';
 import { setCampusStop, setCentreStop, setHomeStop, useBusPrefs } from '../lib/busPrefs';
+import { stopCatalog } from '../lib/stopCatalog';
 import { makeStyles, useAppTheme } from '../lib/theme';
 import { useTimetable } from '../lib/useBus';
 import { Icon } from './Icon';
@@ -17,6 +18,8 @@ export function BusSettings() {
   const [open, setOpen] = useState(false);
   // Only needed for the stop list: load it when the picker opens.
   const { timetable, error } = useTimetable(open);
+  // The home stop drives the now bar's ORIZO departures: ORIZO stops only.
+  const stops = useMemo(() => (timetable ? stopCatalog(timetable, null) : null), [timetable]);
 
   return (
     <View style={styles.wrap}>
@@ -48,7 +51,7 @@ export function BusSettings() {
         visible={open}
         title={t('busSettings.picker')}
         value={homeStop}
-        timetable={timetable}
+        stops={stops}
         error={error}
         allowNone
         onSelect={(name) => {

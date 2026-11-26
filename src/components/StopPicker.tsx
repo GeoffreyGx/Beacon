@@ -1,11 +1,12 @@
-// Bus stop picker: every stop of the kept lines, searchable (accent-, case- and
-// space-insensitive), each with the lines serving it. `pinned` stops (home,
-// campuses) come first, with their icon.
+// Bus stop picker: every stop of the catalog (ORIZO, and ZOU! once loaded:
+// lib/stopCatalog), searchable by stop or commune name (accent-, case- and
+// space-insensitive), each with its commune and the lines serving it. `pinned`
+// stops (home, campuses) come first, with their icon.
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
-import { busStops, type Timetable } from '../lib/bus';
 import { normalizeSearch } from '../lib/events';
 import { t } from '../lib/i18n';
+import type { CatalogStop } from '../lib/stopCatalog';
 import { makeStyles, useAppTheme } from '../lib/theme';
 import { Icon, type IconName } from './Icon';
 import { Sheet } from './Sheet';
@@ -13,59 +14,56 @@ import { Sheet } from './Sheet';
 type Props = {
   visible: boolean;
   title: string;
-  /** Selected stop name. */
+  /** Selected stop key. */
   value: string | null;
-  timetable: Timetable | null;
+  /** The stops (null while the timetable loads). */
+  stops: CatalogStop[] | null;
   /** Timetable loading error, shown instead of the list. */
   error?: string | null;
+  /** Shown above the list (more stops loading…). */
+  note?: string | null;
   /** Adds a "None" entry (onSelect(null)). */
   allowNone?: boolean;
   /** Stops listed first (and not again below), with an icon and a spoken label. */
   pinned?: PinnedStop[];
-  onSelect: (name: string | null) => void;
+  onSelect: (key: string | null) => void;
   onClose: () => void;
 };
 
+/** `name`: the stop key. */
 export type PinnedStop = { name: string; icon: IconName; a11y: string };
 
-export function StopPicker({ visible, title, value, timetable, error, allowNone, pinned, onSelect, onClose }: Props) {
+export function StopPicker({ visible, onClose, ...props }: Props) {
   return (
     <Sheet visible={visible} onClose={onClose} avoidKeyboard>
       {/* Remount on open: the search starts empty each time. */}
-      {visible && (
-        <StopList
-          title={title}
-          value={value}
-          timetable={timetable}
-          error={error}
-          allowNone={allowNone}
-          pinned={pinned}
-          onSelect={onSelect}
-        />
-      )}
+      {visible && <StopList {...props} />}
     </Sheet>
   );
 }
 
-type Row = { name: string | null; lines: string[]; pin?: PinnedStop };
+type Row = { stop: CatalogStop | null; pin?: PinnedStop };
 
-function StopList({ title, value, timetable, error, allowNone, pinned, onSelect }: Omit<Props, 'visible' | 'onClose'>) {
+/** "C3 · 04 · ZOU! 905". */
+const linesLabel = (stop: CatalogStop) => stop.lines.map((l) => (l.network === 'zou' ? `ZOU! ${l.line}` : l.line)).join(' · ');
+
+function StopList({ title, value, stops, error, note, allowNone, pinned, onSelect }: Omit<Props, 'visible' | 'onClose'>) {
   const styles = useStyles();
   const { colors, scheme } = useAppTheme();
   const [query, setQuery] = useState('');
-  const stops = useMemo(() => (timetable ? busStops(timetable) : []), [timetable]);
+  const searchable = useMemo(() => (stops ?? []).map((s) => ({ stop: s, text: normalizeSearch(`${s.name}${s.town ?? ''}`) })), [stops]);
   const rows = useMemo<Row[]>(() => {
     const q = normalizeSearch(query);
-    const found = q ? stops.filter((s) => normalizeSearch(s.name).includes(q)) : stops;
-    // Pinned stops that exist in the timetable (and match the search), each once, then the rest.
+    const found = q ? searchable.filter((s) => s.text.includes(q)).map((s) => s.stop) : (stops ?? []);
+    // Pinned stops that exist (and match the search), each once, then the rest.
     const top: Row[] = [];
     for (const pin of pinned ?? []) {
-      const stop = found.find((s) => s.name === pin.name);
-      if (stop && !top.some((row) => row.name === pin.name)) top.push({ ...stop, pin });
+      const stop = found.find((s) => s.key === pin.name);
+      if (stop && !top.some((row) => row.stop?.key === pin.name)) top.push({ stop, pin });
     }
-    const rest = found.filter((s) => !top.some((row) => row.name === s.name));
-    return [...(allowNone && !q ? [{ name: null, lines: [] }] : []), ...top, ...rest];
-  }, [stops, query, allowNone, pinned]);
+    const rest = found.filter((s) => !top.some((row) => row.stop?.key === s.key)).map((stop) => ({ stop }));
+    return [...(allowNone && !q ? [{ stop: null }] : []), ...top, ...rest];
+  }, [stops, searchable, query, allowNone, pinned]);
 
   return (
     <View style={styles.wrap}>
@@ -85,7 +83,13 @@ function StopList({ title, value, timetable, error, allowNone, pinned, onSelect 
           clearButtonMode="while-editing"
         />
       </View>
-      {!timetable ? (
+      {!!note && stops && (
+        <View style={styles.note}>
+          <ActivityIndicator size="small" color={colors.textMuted} />
+          <Text style={styles.noteText}>{note}</Text>
+        </View>
+      )}
+      {!stops ? (
         error ? (
           <Text style={styles.empty}>{t('bus.unavailable', { error })}</Text>
         ) : (
@@ -95,29 +99,33 @@ function StopList({ title, value, timetable, error, allowNone, pinned, onSelect 
         <FlatList
           style={styles.list}
           data={rows}
-          keyExtractor={(r) => r.name ?? '__none__'}
+          keyExtractor={(r) => r.stop?.key ?? '__none__'}
           keyboardShouldPersistTaps="handled"
           initialNumToRender={20}
           ListEmptyComponent={<Text style={styles.empty}>{t('bus.noStop')}</Text>}
           renderItem={({ item }) => {
-            const selected = item.name === value;
+            const stop = item.stop;
+            const selected = (stop?.key ?? null) === value;
             return (
               <Pressable
-                onPress={() => onSelect(item.name)}
+                onPress={() => onSelect(stop?.key ?? null)}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
-                accessibilityLabel={item.pin?.a11y}
+                accessibilityLabel={item.pin?.a11y ?? (stop?.town ? `${stop.name}, ${stop.town}` : undefined)}
                 style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               >
                 {item.pin && <Icon name={item.pin.icon} size={18} color={selected ? colors.primary : colors.textSecondary} />}
-                <Text style={[styles.label, selected && styles.selectedLabel]} numberOfLines={1}>
-                  {item.name ?? t('common.none')}
-                </Text>
-                {item.lines.length > 0 && (
-                  <Text style={styles.detail} numberOfLines={1}>
-                    {item.lines.join(' · ')}
+                <View style={styles.label}>
+                  <Text style={[styles.name, selected && styles.selectedName]} numberOfLines={1}>
+                    {stop?.name ?? t('common.none')}
+                    {!!stop?.town && <Text style={styles.town}> · {stop.town}</Text>}
                   </Text>
-                )}
+                  {!!stop?.lines.length && (
+                    <Text style={styles.detail} numberOfLines={1}>
+                      {linesLabel(stop)}
+                    </Text>
+                  )}
+                </View>
                 {selected && <Icon name="check-line" size={20} color={colors.primary} />}
               </Pressable>
             );
@@ -141,14 +149,18 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.surfaceAlt,
   },
   input: { flex: 1, fontSize: 15, color: c.text, paddingVertical: 9 },
+  note: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingBottom: 6 },
+  noteText: { flexShrink: 1, fontSize: 12, color: c.textMuted },
   // Shrinks with the sheet when the keyboard is open.
   wrap: { flexShrink: 1 },
   list: { maxHeight: 420, flexShrink: 1 },
   spinner: { marginVertical: 24 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8 },
   pressed: { backgroundColor: c.pressed },
-  label: { flex: 1, fontSize: 15, color: c.text },
-  selectedLabel: { fontWeight: '700', color: c.primary },
-  detail: { fontSize: 13, color: c.textMuted, maxWidth: '45%' },
+  label: { flex: 1 },
+  name: { fontSize: 15, color: c.text },
+  selectedName: { fontWeight: '700', color: c.primary },
+  town: { fontSize: 13, fontWeight: '400', color: c.textMuted },
+  detail: { fontSize: 12, color: c.textMuted },
   empty: { fontSize: 14, color: c.textMuted, textAlign: 'center', paddingVertical: 24 },
 }));

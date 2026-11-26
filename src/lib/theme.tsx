@@ -4,8 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Appearance, Platform, StyleSheet, useColorScheme } from 'react-native';
 import { getPref, setPref } from './prefs';
 
-/** Partner brand colours, same in light and dark mode. */
-export const BRAND = { izly: '#E6007E' } as const;
+/** Partner brand colours, same in light and dark mode (white text on zou). */
+export const BRAND = { izly: '#E6007E', zou: '#1C4F9C' } as const;
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 export type Scheme = 'light' | 'dark';

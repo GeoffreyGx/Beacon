@@ -73,7 +73,8 @@ gitignored `PRIVATE_AGENTS.md` on the maintainer's machine. Don't recreate it or
 ## CI / releases
 
 `.github/workflows/android-release.yml` runs on every push to `main` (and manually): `npm ci` →
-`expo prebuild -p android --clean` → `./gradlew assembleRelease` (arm64-v8a + armeabi-v7a) → signed with
+`expo prebuild -p android --clean` → `./gradlew assembleRelease` (arm64-v8a + armeabi-v7a for phones, x86_64 +
+x86 for PC emulators such as BlueStacks) → signed with
 the release keystore from repo secrets → GitHub release with `Beacon-<tag>.apk`.
 - Tag = `v<expo.version in app.json>` (or `v<version>-build.<run>` if the tag already exists): **bump
   `expo.version` before merging a new version into `main`**.
@@ -93,11 +94,12 @@ the release keystore from repo secrets → GitHub release with `Beacon-<tag>.apk
 
 | Tab / screen | Route | |
 |---|---|---|
-| Accueil | `src/app/(tabs)/index.tsx` | Contextual "now bar" header (class in progress, next class, lunch, bus home…), alerts (server alerts + app update), student card button, editable widgets (Aujourd'hui, Resto U, Bus, Salles favorites). |
+| Accueil | `src/app/(tabs)/index.tsx` | Contextual "now bar" header (class in progress, next class, lunch, bus home…), alerts (server alerts + app update), student card button, editable widgets (Aujourd'hui, Resto U, Bus, Salles favorites). The Bus widget: from any ORIZO or ZOU! stop around Avignon (Châteaurenard, Saint-Rémy…), the next trips to Sainte-Marthe or Agroparc (ZOU! + ORIZO, with transfers, computed on the device), each opening the full trip. |
 | Mon EDT | `(tabs)/perso.tsx` | Timetable of the selected favourite: one day with swipe on phones, week grid on wide screens. |
 | Salles | `(tabs)/salles.tsx` | Room availability grid (rooms × 30-min slots) with a draggable time cursor, search, campus filter, pinned rooms. |
 | Payer | `(tabs)/pay.tsx` | Izly balance, QR payment, history. Tab hidden unless an Izly account is linked. |
 | Carte étudiant | `src/app/card.tsx` | Digital student card with barcode (cached offline). |
+| Trajet | `src/app/trip.tsx` | Full trip opened from a Bus widget summary (`src/lib/tripStore.ts`): every vehicle with its boarding / alighting stops and times, walks, transfers and waits. |
 | Réglages | `src/app/settings.tsx` | Theme, language, bus stops, Izly, logout; "Développement" section in dev builds only. |
 
 First launch shows the onboarding (`src/components/Onboarding.tsx`): university login → optional Izly
@@ -115,7 +117,9 @@ src/widgets/             home widgets + registry.ts
 src/debug/DebugPanel.tsx dev-only now-bar scenarios (fake clock / events)
 src/lib/                 logic: storage (keychain), store (createStore), prefs, session, edt*, events, time,
                          theme, i18n/, izly/, bus + gtfsRt (buses), crous, studentCard, code128, webview, http,
-                         beaconApi + analytics + content (Beacon server, see below), appUpdate (Android)
+                         beaconApi + analytics + content (Beacon server, see below), appUpdate (Android),
+                         Bus widget trips: gtfs (shared GTFS helpers), zou (ZOU! timetable), stopCatalog +
+                         communes (ORIZO + ZOU! stops), journey (trip planner), campuses
 scripts/gen-icons.py     regenerates src/components/Icon.tsx
 assets/icon-src/         app icon generator (Pillow)
 app.json / app.config.ts config; BEACON_PERSONAL_BUILD=1 → iOS bundle id with `.dev` suffix
@@ -182,7 +186,20 @@ anonymous statistics and static content. The app finds it through `EXPO_PUBLIC_B
 - iOS sticky ScrollView headers: RN replaces the sticky child's style, so wrap the header row in an extra `<View>`.
 - `react-native-svg`: don't put `accessible` on `<Svg>` (breaks on web).
 - `expo-location` adds "Always" permission strings by default; `app.json` disables them.
-- Bus timetable cache (`src/lib/bus.ts`): bump `CACHE_VERSION` whenever the cached shape changes.
+- Bus timetable cache (`src/lib/bus.ts`): bump `CACHE_VERSION` whenever the cached shape changes. Same for
+  the ZOU! cache (`src/lib/zou.ts`, its own `CACHE_VERSION`).
+- ZOU! data (Bus widget): GTFS "Proximité" and "Express + trains" from transport.data.gouv.fr (resources
+  82137 / 82285, ≈ 15 MB, re-downloaded weekly, reduced on the device to the trips serving the Avignon area).
+  Only loaded when needed (a ZOU! stop selected, the stop list open, or already cached): don't load it
+  elsewhere without reason. ZOU! stop ids end with the commune's INSEE code (`src/lib/communes.ts`, a
+  generated table). The planner (`src/lib/journey.ts`) and the catalog are pure logic: test them in Node with
+  the real feeds (stub `expo/fetch`, `expo-file-system` and `i18n`).
 - Native Android builds need ~5–10 GB of free disk space.
+- Windows: native builds fail with "Filename longer than 260 characters" (CMake object paths repeat the full
+  source path, and the ninja 1.10 of the SDK's CMake 3.22.1 can't use long paths). Keep the project in a short
+  folder (e.g. `C:\dev\Beacon`), enable Windows long paths, install `cmake;3.31.6` with the SDK manager (ninja
+  1.12) and set `cmake.dir` to it in `android/local.properties` (machine-specific, gitignored with `android/`).
+- PC emulators (BlueStacks…) are x86_64: the APK needs that ABI (the default `reactNativeArchitectures` has it).
+  BlueStacks: enable ADB in its settings, then `HD-Adb connect 127.0.0.1:<port>` (the port HD-Player listens on).
 - No test runner: pure logic (`time.ts`, `events.ts`…) can be checked by copying it to a scratch folder and
   running it with `node --experimental-strip-types` (stub Expo imports).

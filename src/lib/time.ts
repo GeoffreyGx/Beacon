@@ -1,7 +1,7 @@
 // Date helpers pinned to Europe/Paris, whatever the device's time zone.
 // Days are handled as "YYYY-MM-DD" keys to avoid DST pitfalls.
 // Labels follow the app language (lib/i18n).
-import { getLang, intlLocale } from './i18n';
+import { getLang, intlLocale, t } from './i18n';
 
 const TZ = 'Europe/Paris';
 
@@ -96,6 +96,15 @@ export function dayLabel(day: string): string {
 
 export const formatMinutes = (min: number) =>
   `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/** "07:42": Paris time of an instant (ms). */
+export const formatTime = (ms: number) => formatMinutes(parisParts(new Date(ms)).minutes);
+
+/** "35 min" / "1 h 05" for a duration in ms. */
+export function formatDuration(ms: number) {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  return m < 60 ? t('duration.min', { m }) : t('duration.hours', { h: Math.floor(m / 60), mm: String(m % 60).padStart(2, '0') });
+}
 
 const shortLabelFormatter = localized({ weekday: 'short', day: 'numeric', month: 'short' });
 

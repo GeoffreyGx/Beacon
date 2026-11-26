@@ -13,8 +13,9 @@
 import { fetch } from 'expo/fetch';
 import { File, Paths } from 'expo-file-system';
 import { strFromU8, unzipSync } from 'fflate';
+import { distanceM, eachRow, gtfsTime, parseCalendar, serviceDayStart, serviceRuns, type ServiceCalendar } from './gtfs';
 import type { RealtimeFeed } from './gtfsRt';
-import { addDays, parisParts, weekday } from './time';
+import { addDays, parisParts } from './time';
 import { t } from './i18n';
 
 const GTFS_URL =
@@ -49,7 +50,7 @@ export const samePlace = (a: string, b: string) => a === b || (isCentre(a) && is
 
 /** Re-download the timetable after this long (the feed is published every few days). */
 const MAX_AGE_MS = 3 * 24 * 3600_000;
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 
 /** [stop_id, seconds since the start of the service day (may exceed 24 h)], in stop order. */
 type StopTime = [string, number];
@@ -64,56 +65,12 @@ export type Timetable = {
   stopNames: Record<string, string>;
   /** Stop name → [latitude, longitude] (centre of its platforms). */
   stopCoords: Record<string, [number, number]>;
+  /** stop_id → [latitude, longitude] of each platform (journey planner, lib/journey). */
+  stopPos: Record<string, [number, number]>;
   trips: BusTrip[];
-  /** service_id → weekdays (Mon..Sun) and validity range (YYYY-MM-DD). */
-  calendar: Record<string, { days: boolean[]; start: string; end: string }>;
-  /** service_id → dates added / removed (calendar_dates). */
-  added: Record<string, string[]>;
-  removed: Record<string, string[]>;
-};
+} & ServiceCalendar; // service_id → weekdays and validity range, dates added / removed
 
 // ---------- GTFS parsing ----------
-
-/** Minimal CSV line parser (quoted fields, "" escapes). */
-function splitCsv(line: string): string[] {
-  if (!line.includes('"')) return line.split(',');
-  const out: string[] = [];
-  let cur = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quoted) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (ch === '"') quoted = false;
-      else cur += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else cur += ch;
-  }
-  out.push(cur);
-  return out;
-}
-
-/** Calls `row(get)` for each data line; `get(column)` reads a field of the current line. */
-function eachRow(text: string, row: (get: (col: string) => string, firstField: string) => void) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
-  const header = splitCsv(lines[0]);
-  const index = new Map(header.map((h, i) => [h.trim(), i]));
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    let fields: string[] | null = null;
-    const get = (col: string) => {
-      fields ??= splitCsv(line);
-      return fields[index.get(col) ?? -1] ?? '';
-    };
-    row(get, line.slice(0, line.indexOf(',')).replace(/"/g, ''));
-  }
-}
 
 /** Words kept as written in headsigns. */
 const KEEP_UPPER = new Set(['P+R', 'TGV', 'LEP', 'DB', 'CCI', 'IUT', 'CERI']);
@@ -135,12 +92,6 @@ export function formatHeadsign(raw: string): string {
     })
     .join(' ');
 }
-
-const gtfsDate = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
-const gtfsTime = (s: string) => {
-  const [h, m, sec] = s.split(':').map(Number);
-  return h * 3600 + m * 60 + (sec || 0);
-};
 
 export function parseGtfs(zip: Uint8Array): Timetable {
   const files = unzipSync(zip, { filter: (f) => /^(routes|stops|trips|stop_times|calendar|calendar_dates)\.txt$/.test(f.name) });
@@ -196,11 +147,13 @@ export function parseGtfs(zip: Uint8Array): Timetable {
     kept.push({ id, line: trip.line, service: trip.service, limited: trip.limited, headsign, stops });
   }
 
-  // Centre of each stop's platforms.
+  // Centre of each stop's platforms, and each platform's own position.
   const sums: Record<string, [number, number, number]> = {};
+  const stopPos: Timetable['stopPos'] = {};
   for (const [id, name] of Object.entries(stopNames)) {
     const c = allStopCoords.get(id);
     if (!c) continue;
+    stopPos[id] = c;
     const acc = (sums[name] ??= [0, 0, 0]);
     acc[0] += c[0];
     acc[1] += c[1];
@@ -210,24 +163,10 @@ export function parseGtfs(zip: Uint8Array): Timetable {
   for (const [name, [lat, lon, n]] of Object.entries(sums)) stopCoords[name] = [lat / n, lon / n];
 
   const services = new Set(kept.map((t) => t.service));
-  const calendar: Timetable['calendar'] = {};
-  eachRow(text('calendar.txt'), (get) => {
-    const id = get('service_id');
-    if (!services.has(id)) return;
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((d) => get(d) === '1');
-    calendar[id] = { days, start: gtfsDate(get('start_date')), end: gtfsDate(get('end_date')) };
-  });
-  const added: Timetable['added'] = {};
-  const removed: Timetable['removed'] = {};
-  eachRow(text('calendar_dates.txt'), (get) => {
-    const id = get('service_id');
-    if (!services.has(id)) return;
-    const target = get('exception_type') === '1' ? added : removed;
-    (target[id] ??= []).push(gtfsDate(get('date')));
-  });
+  const calendars = parseCalendar(text('calendar.txt'), text('calendar_dates.txt'), services);
 
   if (!kept.length) throw new Error(t('err.busNoTrips'));
-  return { version: CACHE_VERSION, fetchedAt: Date.now(), lineColors, stopNames, stopCoords, trips: kept, calendar, added, removed };
+  return { version: CACHE_VERSION, fetchedAt: Date.now(), lineColors, stopNames, stopCoords, stopPos, trips: kept, ...calendars };
 }
 
 // ---------- download + cache ----------
@@ -279,21 +218,6 @@ export function loadTimetable(): Promise<Timetable> {
 
 // ---------- departures ----------
 
-function serviceRuns(tt: Timetable, service: string, day: string) {
-  if (tt.removed[service]?.includes(day)) return false;
-  if (tt.added[service]?.includes(day)) return true;
-  const c = tt.calendar[service];
-  return !!c && c.start <= day && day <= c.end && c.days[(weekday(day) + 6) % 7];
-}
-
-/** GTFS service-day origin: noon (Paris) minus 12 h, so DST days work. */
-function serviceDayStart(day: string) {
-  const [y, m, d] = day.split('-').map(Number);
-  const utcNoon = Date.UTC(y, m - 1, d, 12);
-  const offsetMin = parisParts(new Date(utcNoon)).minutes - 12 * 60; // Paris is ahead of UTC by this
-  return utcNoon - offsetMin * 60_000 - 12 * 3600_000;
-}
-
 export type Departure = {
   tripId: string;
   line: string;
@@ -321,14 +245,6 @@ export function busStops(tt: Timetable): { name: string; lines: string[] }[] {
   return [...lines]
     .map(([name, l]) => ({ name, lines: [...l].sort(compareLines) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-}
-
-/** Distance in metres between two [lat, lon] points (haversine). */
-export function distanceM([lat1, lon1]: [number, number], [lat2, lon2]: [number, number]) {
-  const rad = Math.PI / 180;
-  const a =
-    Math.sin(((lat2 - lat1) * rad) / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(((lon2 - lon1) * rad) / 2) ** 2;
-  return 2 * 6_371_000 * Math.asin(Math.sqrt(a));
 }
 
 /** The stop of `names` nearest to `here` (names without coordinates are ignored), or null. */
@@ -410,32 +326,6 @@ export function nextDepartures(
       if (i < 0) continue;
       const j = trip.stops.findIndex(([id], k) => k > i && tt.stopNames[id] === toName);
       if (j > 0) out.push({ trip, dep: trip.stops[i], arr: trip.stops[j] });
-    }
-    return out;
-  });
-  return departuresOf(tt, rt, legs, now, count);
-}
-
-/**
- * Next `count` departures of every line from stop `name`, whatever their destination
- * (arrival = terminus). Buses ending there aren't departures: a call counts only if
- * the bus then goes on to another place (so "St Lazare → Université" at the end of a
- * trip is an arrival, see samePlace).
- */
-export function stopDepartures(tt: Timetable, rt: RealtimeFeed | null, name: string, now: number, count = 6): Departure[] {
-  const legs = cachedLegs(tt, `stop\n${name}`, () => {
-    const out: Leg[] = [];
-    for (const trip of tt.trips) {
-      const names = trip.stops.map(([id]) => tt.stopNames[id]);
-      // Last call somewhere else: a call at `name` before it is a departure.
-      let lastElsewhere = -1;
-      for (let k = names.length - 1; k >= 0; k--)
-        if (!samePlace(names[k], name)) {
-          lastElsewhere = k;
-          break;
-        }
-      const i = names.findIndex((n, k) => n === name && k < lastElsewhere);
-      if (i >= 0) out.push({ trip, dep: trip.stops[i], arr: trip.stops[trip.stops.length - 1] });
     }
     return out;
   });

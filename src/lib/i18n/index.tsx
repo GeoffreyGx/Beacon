@@ -133,7 +133,7 @@ export function t(key: TranslationKey, params?: Params): string {
 }
 
 /** Singular / plural form: `${base}_one` for 1 (and 0 in French), `${base}_other` otherwise. */
-export function tn(base: 'rooms.count', count: number, params?: Params): string {
+export function tn(base: 'rooms.count' | 'bus.trip.transfers' | 'trip.stops', count: number, params?: Params): string {
   const one = lang === 'fr' ? count <= 1 : count === 1;
   return t(`${base}_${one ? 'one' : 'other'}`, { count, ...params });
 }

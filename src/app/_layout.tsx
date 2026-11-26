@@ -46,6 +46,7 @@ function ThemedStack() {
         <Stack.Screen name="login" options={{ title: t('nav.login') }} />
         <Stack.Screen name="izly-login" options={{ title: t('nav.izlyLogin') }} />
         <Stack.Screen name="card" options={{ title: t('nav.card') }} />
+        <Stack.Screen name="trip" options={{ title: t('nav.trip') }} />
         <Stack.Screen name="settings" options={{ title: t('nav.settings') }} />
       </Stack>
     </ThemeProvider>

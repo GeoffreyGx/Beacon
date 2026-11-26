@@ -4,7 +4,8 @@ A student app for **Université d'Avignon**, for iOS and Android.
 
 - **Timetable**: today's classes at a glance, day and week views.
 - **Rooms**: see which rooms are free right now or later.
-- **Buses**: real-time Grand Avignon (ORIZO) departures.
+- **Buses**: real-time Grand Avignon (ORIZO) departures, ZOU! regional coaches and trains from any stop
+  around Avignon, and the next trips to the Sainte-Marthe or Agroparc campus.
 - **Student card**: digital card with barcode, works offline.
 - **Izly**: balance, history and QR code payment.
 - Customisable home widgets, Crous restaurant attendance, 18 languages, light and dark themes.
