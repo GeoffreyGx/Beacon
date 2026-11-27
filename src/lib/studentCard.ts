@@ -133,21 +133,41 @@ export async function saveStudentCard(info: EntInfoUser): Promise<void> {
 
 let photoRequest = 0;
 
+/** The ENT may give the photo as http:// or as a path; always fetch it over https from a university host. */
+function photoHttpsUrl(raw: string): string {
+  const url = new URL(raw.trim(), 'https://ent.univ-avignon.fr/');
+  url.protocol = 'https:';
+  if (url.hostname !== 'univ-avignon.fr' && !url.hostname.endsWith('.univ-avignon.fr')) {
+    throw new Error(`photo host not allowed: ${url.hostname}`);
+  }
+  return url.toString();
+}
+
+/** JPEG, PNG, GIF or WebP signature. */
+function isImage(b: Uint8Array): boolean {
+  if (b.length < 12) return false;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true; // JPEG
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true; // PNG
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return true; // GIF
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+  return ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP';
+}
+
 async function downloadPhoto(url: string, card: StudentCard, gen: number) {
   const request = ++photoRequest;
   store.set({ photoLoading: true });
   const file = photoFile();
   let ok = false;
   try {
-    if (!url.startsWith('https://')) throw new Error('photo URL is not https');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), PHOTO_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { signal: ctrl.signal });
+      const res = await fetch(photoHttpsUrl(url), { signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // An error page served with 200 must not replace a good cached photo.
-      if (!/^image\//i.test(res.headers.get('content-type') ?? 'image/')) throw new Error('not an image');
       const bytes = await res.bytes();
+      // An error page served with 200 must not replace a good cached photo. Check the bytes,
+      // not the Content-Type: the photo server doesn't always label its images as image/*.
+      if (!isImage(bytes)) throw new Error(`not an image (${res.headers.get('content-type') ?? 'no content-type'})`);
       // Logged out meanwhile: never write the previous user's photo back to disk.
       if (gen !== generation) return;
       await file.write(bytes);
@@ -155,8 +175,9 @@ async function downloadPhoto(url: string, card: StudentCard, gen: number) {
     } finally {
       clearTimeout(timer);
     }
-  } catch {
+  } catch (e) {
     // Photo server down: keep the previously cached photo, if any.
+    if (__DEV__) console.warn('[studentCard] photo download failed:', e instanceof Error ? e.message : e);
   }
   if (request !== photoRequest || gen !== generation) return; // superseded, or logged out
   const updated: StudentCard = { ...card, photoUri: file.exists ? file.uri : null, photoMissing: !ok && !file.exists };
